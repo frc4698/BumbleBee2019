@@ -24,8 +24,6 @@ public:
 
 	void MoveElevator(double kPosition);
 	void IntakeSpeed(double xSpeed);
-	void MoveElbow(double kPosition);
-	void MoveWrist(double kPosition);
 
 	TalonSRX ElevatorFront { 0 }; //40amp
 	TalonSRX ElevatorBack { 1 }; //40amp
@@ -35,20 +33,14 @@ public:
 	frc::VictorSP ArmRight { 1 }; //30amp
 
 	TalonSRX *ElevatorMaster = new TalonSRX(0);
+	TalonSRX *ElevatorSlave = new TalonSRX(1);
 	TalonSRX *ElbowController = new TalonSRX(3);
+
+	double Lock;
 
 private:
 
-	double single;
-	double rotation;
-	double wristMax, wristMin;
-	double elbowMax, elbowMin;
-	double elevatorMax;
-
-	double ElevatorCurrent;
-	double ElevatorError;
-	double ESpeed;
-	double ElevatorIntegral;
+double ElevatorMultiplier;
 
 };
 

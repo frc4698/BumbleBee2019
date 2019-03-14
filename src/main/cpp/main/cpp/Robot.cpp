@@ -13,7 +13,8 @@
 void Robot::RobotInit() {
 	frontRight.SetInverted(true);
 	backRight.SetInverted(true);
-	E.ElevatorFront.SetInverted(true);
+	E.ElevatorBack.SetInverted(true);
+	E.ElevatorSlave->Set(ControlMode::Follower, 0);
 	prefs = Preferences::GetInstance();
 	frc::CameraServer::GetInstance()->StartAutomaticCapture();
 	gyro = new AHRS(SPI::Port::kMXP);
@@ -33,8 +34,6 @@ void Robot::DisabledPeriodic() {
 
 	drive_multiplier = prefs->GetDouble("DriveMultiplier", .8);
 	turn_multiplier = prefs->GetDouble("TurnMultiplier", .8);
-	kGyrokP = prefs->GetDouble("GyrokP", .25);
-	kGyrokI = prefs->GetDouble("GyrokI", .01);
 	ElbowkD = prefs->GetDouble("ElbowkD", 0);
 	ElbowkI = prefs->GetDouble("ElbowkI", 0);
 	ElbowkP = prefs->GetDouble("ElbowkP", 0);
@@ -44,8 +43,6 @@ void Robot::DisabledPeriodic() {
 
 	SmartDashboard::PutNumber("Drive Multiplier:", drive_multiplier);
 	SmartDashboard::PutNumber("Turn Multiplier:", turn_multiplier);
-	SmartDashboard::PutNumber("GyrokP:", kGyrokP);
-	SmartDashboard::PutNumber("GyrokI:", kGyrokI);
 	SmartDashboard::PutNumber("X Button:", POV);
 	SmartDashboard::PutNumber("Elbow:", E.ElbowController->GetSelectedSensorPosition());
 	SmartDashboard::PutNumber("elbowup", elbowup);
@@ -62,7 +59,7 @@ void Robot::DisabledPeriodic() {
 	}
 	if(driver.GetRawButton(7)){
 		E.ElevatorMaster->SetSelectedSensorPosition(0);
-		Lock = 0;
+		E.Lock = 0;
 	}
 }
 
@@ -81,10 +78,9 @@ void Robot::AutonomousInit() {
 	E.ElbowController->ConfigAllowableClosedloopError(kPIDLoopIdx, 200, 30);
 
 	//Elevator PID
-	E.ElevatorBack.Set(ControlMode::Follower, 0);
 	E.ElevatorMaster->SetSelectedSensorPosition(0, kPIDLoopIdx, 30);
 	E.ElevatorMaster->ConfigSelectedFeedbackSensor(FeedbackDevice::CTRE_MagEncoder_Relative, kPIDLoopIdx, 30);
-	E.ElevatorMaster->SetSensorPhase(true);
+	E.ElevatorMaster->SetSensorPhase(false);
 	E.ElevatorMaster->Config_kD(kPIDLoopIdx, ElevatorkD, 30);
 	E.ElevatorMaster->Config_kI(kPIDLoopIdx, ElevatorkI, 30);
 	E.ElevatorMaster->Config_kP(kPIDLoopIdx, ElevatorkP, 30);
@@ -109,10 +105,7 @@ SmartDashboard::PutNumber("elbowup", elbowup);
 	//Driver
 	//Speed Throttle
 	if (leftBumper) {
-		speed = .5/drive_multiplier;
-	}
-	else if (rightBumper) {
-		speed = 1/drive_multiplier;
+		speed = .5;
 	}
 	else {
 		speed = 1;
@@ -126,7 +119,7 @@ SmartDashboard::PutNumber("elbowup", elbowup);
 		shift->Set(DoubleSolenoid::Value::kReverse);
 	}
 
-	RaiderDrive(-(left_x * turn_multiplier), (-input_rt + input_lt) * drive_multiplier * speed);
+	RaiderDrive(-(left_x * turn_multiplier) * speed, (-input_rt + input_lt) * drive_multiplier * speed);
 
 	//Operator
 	//Release Disk
@@ -136,34 +129,11 @@ SmartDashboard::PutNumber("elbowup", elbowup);
 	else{
 		disk->Set(DoubleSolenoid::kReverse);
 	}
-	if(abs(elevator_up-elevator_down) > .1){
-		E.ElevatorFront.Set(ControlMode::PercentOutput, -(elevator_up - elevator_down) * .5);
-		Lock = E.ElevatorMaster->GetSelectedSensorPosition();
-	}
-	else{
-		E.ElevatorFront.Set(ControlMode::Position, Lock);
-	}
 
-	if(ServoController){
-		ServoDropped = true;
-	}
-
-	if(ServoDropped){
-		climber->SetAngle(50); //Low	
-	} else {
-		climber->SetAngle(150); //High
-	}
- 	 
-	//climber->SetAngle(50); //Low
-
-	if(abs(intake) > .1){
-		E.ArmLeft.Set(intake * .65);
-		E.ArmRight.Set(-intake * .65);
-	}
-	else{
-		E.ArmLeft.Set(.05);
-		E.ArmRight.Set(-.05);
-	}
+	//Move Elevator
+	E.MoveElevator(elevator_up-elevator_down);
+	//Intake
+	E.IntakeSpeed(intake);
 
 	if (Straight){
 		E.ElbowController->Set(ControlMode::Position, -5900);
@@ -185,7 +155,7 @@ SmartDashboard::PutNumber("elbowup", elbowup);
 	Climber_Top.Set(ControlMode::PercentOutput, ClimberWheels);
 
 	SmartDashboard::PutNumber("Teleop Elevator", E.ElevatorMaster->GetSelectedSensorPosition());
-	SmartDashboard::PutNumber("Desired", Lock);
+	SmartDashboard::PutNumber("Desired", E.Lock);
 
 }
 

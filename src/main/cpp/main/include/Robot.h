@@ -117,12 +117,9 @@ private:
 	double turn_multiplier;
 	double speed;
 
+	
+
 	//PID
-		//Drive
-	double kGyrokP;
-	double kGyrokI;
-	double kGyrokD;
-		//PID Control
 	double kP;
 	double kI;
 	double kD;
@@ -132,8 +129,6 @@ private:
 	double kDerivative;
 	double kCurrent;
 	double kSpeed;
-
-	double Lock;
 
 	double ElbowkP;
 	double ElbowkI;
