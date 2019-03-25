@@ -15,6 +15,7 @@ void Robot::RobotInit() {
 	backRight.SetInverted(true);
 	E.ElevatorBack.SetInverted(true);
 	E.ElevatorSlave->Set(ControlMode::Follower, 0);
+	//E.ElbowMotor.SetInverted(true);
 	prefs = Preferences::GetInstance();
 	frc::CameraServer::GetInstance()->StartAutomaticCapture();
 	gyro = new AHRS(SPI::Port::kMXP);
@@ -24,34 +25,23 @@ void Robot::RobotInit() {
 }
 
 void Robot::DisabledInit() {
-	shift->Set(DoubleSolenoid::Value::kForward);
-	ServoDropped = false;
-	climber->SetAngle(150); //High
 }
 
 void Robot::DisabledPeriodic() {
 	getInput();
 
-	drive_multiplier = prefs->GetDouble("DriveMultiplier", .8);
-	turn_multiplier = prefs->GetDouble("TurnMultiplier", .8);
-	ElbowkD = prefs->GetDouble("ElbowkD", 0);
+	DriveMultiplier = prefs->GetDouble("DriveMultiplier", .8);
+	TurnMultiplier = prefs->GetDouble("TurnMultiplier", .8);
+	ElbowkD = prefs->GetDouble("ElbowkD", 0);	
 	ElbowkI = prefs->GetDouble("ElbowkI", 0);
 	ElbowkP = prefs->GetDouble("ElbowkP", 0);
 	ElevatorkP = prefs->GetDouble("ElevatorP", 0);
 	ElevatorkI = prefs->GetDouble("ElevatorI", 0);
 	ElevatorkD = prefs->GetDouble("ElevatorD", 0);
 
-	SmartDashboard::PutNumber("Drive Multiplier:", drive_multiplier);
-	SmartDashboard::PutNumber("Turn Multiplier:", turn_multiplier);
-	SmartDashboard::PutNumber("X Button:", POV);
+	SmartDashboard::PutNumber("Drive Multiplier:", DriveMultiplier);
+	SmartDashboard::PutNumber("Turn Multiplier:", TurnMultiplier);
 	SmartDashboard::PutNumber("Elbow:", E.ElbowController->GetSelectedSensorPosition());
-	SmartDashboard::PutNumber("elbowup", elbowup);
-	SmartDashboard::PutNumber("P", ElbowkP);
-	SmartDashboard::PutNumber("I", ElbowkI);
-	SmartDashboard::PutNumber("D", ElbowkD);
-	SmartDashboard::PutNumber("EP", ElevatorkP);
-	SmartDashboard::PutNumber("EI", ElevatorkI);
-	SmartDashboard::PutNumber("ED", ElevatorkD);
 	SmartDashboard::PutNumber("Elevator", E.ElevatorMaster->GetSelectedSensorPosition());
 
 	if(driver.GetStartButton()){
@@ -65,7 +55,9 @@ void Robot::DisabledPeriodic() {
 
 void Robot::AutonomousInit() {
 	//Pneumatics
-	disk->Set(frc::DoubleSolenoid::Value::kReverse);
+	disk->Set(frc::DoubleSolenoid::Value::kForward);
+	shift->Set(frc::DoubleSolenoid::Value::kReverse);
+	lift->Set(frc::DoubleSolenoid::Value::kReverse);
 
 	//Elbow PID
 	E.ElbowController->SetSelectedSensorPosition(0, kPIDLoopIdx, 30);
@@ -86,6 +78,15 @@ void Robot::AutonomousInit() {
 	E.ElevatorMaster->Config_kP(kPIDLoopIdx, ElevatorkP, 30);
 	E.ElevatorMaster->Config_IntegralZone(kPIDLoopIdx, 250, 30);
 	E.ElevatorMaster->ConfigClosedLoopPeakOutput(kPIDLoopIdx, .45, 30);
+
+	//Climber
+	ClimberMode = false;
+	CurrentPos = false;
+
+	E.ElbowController->SetSelectedSensorPosition(0);
+	E.ElevatorMaster->SetSelectedSensorPosition(0);
+	E.Lock = 0;
+	E.ElbowController->Set(ControlMode::Position, 0);
 }
 
 void Robot::AutonomousPeriodic() {
@@ -99,106 +100,197 @@ int Level;
 std::string Object;
 
 void Robot::TeleopPeriodic() {
+	
+	double tx = table->GetNumber("tx",0.0);
+	double ty = table->GetNumber("ty",0.0);
+	double ta = table->GetNumber("ta",0.0);
+	double ts = table->GetNumber("ts",0.0);
 
 	getInput();
-SmartDashboard::PutNumber("elbowup", elbowup);
 	//Driver
+
 	//Speed Throttle
 	if (leftBumper) {
-		speed = .5;
+		Speed = .5;
 	}
 	else {
-		speed = 1;
+		Speed = 1;
 	}
 
 	//Shift
-	if (shiftup) {
+	if (ShiftUp) {
 		shift->Set(DoubleSolenoid::Value::kForward);
+		TurnMultiplier = .8;
 	}
-	if (shiftdown) {
+	if (ShiftDown) {
 		shift->Set(DoubleSolenoid::Value::kReverse);
+		TurnMultiplier = .4;
 	}
 
-	RaiderDrive(-(left_x * turn_multiplier) * speed, (-input_rt + input_lt) * drive_multiplier * speed);
+	//Limelight Target Reflective Strips
+	if(AutoAline){
+		table->PutNumber("pipeline", 2);
+	}
+
+	//Turns off Targeting
+	if(NullTarget){
+		table->PutNumber("pipeline", 0);
+		tCorrection = 0;
+		tIntegral = 0;
+	}
+	
+	//PID for Left and Right
+	tError = tx;
+	tPCorrection = tError * kP;
+	if (abs(tIntegral) > 100000){
+		tIntegral = tIntegral/5;
+	}
+	tIntegral += tError;
+	tICorrection = tIntegral * kI;
+	tDCorrection = (tError - tPrevError) * kD;
+	tCorrection = tPCorrection + tICorrection + tDCorrection;
+	if(table->GetNumber("getpipe", 0.0) == 0 || tx == 0){
+		tCorrection = 0;
+		tIntegral = 0;
+	}
+	tPrevError = tError;
+
+	//PID for Forward and Backwards
+	fError = ty;
+	fPCorrection = fError * kP;
+	if (abs(tIntegral) > 100000){
+		fIntegral = fIntegral/5;
+	}
+	fIntegral += fError;
+	fICorrection = fIntegral * kI;
+	fDCorrection = (fError - fPrevError) * kD;
+	fCorrection = fPCorrection + fICorrection + fDCorrection;
+	if(table->GetNumber("getpipe", 0.0) == 0 || tx == 0){
+		fCorrection = 0;
+		fIntegral = 0;
+	}
+	fPrevError = fError;
+
+	//Custom Drive Class (Like Arcade Drive)
+	RaiderDrive((-(LeftX * TurnMultiplier) * Speed) + tCorrection, (-Input_Rt + Input_Lt) * DriveMultiplier * Speed);
 
 	//Operator
-	//Release Disk
-	if (release_1 || release_2){
-		disk->Set(DoubleSolenoid::kForward);
+
+	//Changes What Triggers do on Operator Controller
+	if(operater.GetStartButtonReleased()){
+		if(ClimberMode == true){
+			ClimberMode = false;
+		}
+		else{
+			ClimberMode = true;
+		}
+	}
+
+	//Elevator
+	ElevatorSpeed = ElevatorUp - ElevatorDown;
+	if(ClimberMode == true){
+		E.Climber(ElevatorUp-ElevatorDown, ClimberWheels);
+	if(Climb){
+		if(CurrentPos == false){
+			lift->Set(DoubleSolenoid::Value::kReverse);
+			CurrentPos = true;
+		}
+		else{
+			lift->Set(DoubleSolenoid::Value::kForward);
+			CurrentPos = false;
+		}
+	}
 	}
 	else{
+		//Move Elevator
+		E.MoveElevator(-ElevatorSpeed);
+		//Intake
+		E.IntakeSpeed(-Intake);
+	}
+
+	//Release Disk
+	if (Release){
 		disk->Set(DoubleSolenoid::kReverse);
 	}
-
-	//Move Elevator
-	E.MoveElevator(elevator_up-elevator_down);
-	//Intake
-	E.IntakeSpeed(intake);
+	else if (Grab){
+		disk->Set(DoubleSolenoid::kForward);
+	}
 
 	if (Straight){
-		E.ElbowController->Set(ControlMode::Position, -5900);
+		E.ElbowController->Set(ControlMode::Position, -5000);
 	}
 
-	else if (elbowup){
-		E.ElbowController->Set(ControlMode::Position, -3500);
+	else if (ElbowUp){
+		E.ElbowController->Set(ControlMode::Position, -3000);
 	}
 
-	else if (elbowdown){
-		E.ElbowController->Set(ControlMode::Position, -9150);
+	else if (ElbowDown){
+		E.ElbowController->Set(ControlMode::Position, -8800);
 	}
 
 	else if(MaxHeight){
 		E.ElbowController->Set(ControlMode::Position, 0);
 	}
 
-	Climber_Bottom.Set(ControlMode::PercentOutput, ClimberWheels);
-	Climber_Top.Set(ControlMode::PercentOutput, ClimberWheels);
+	if(POV == 270){
+		E.ElbowController->Set(ControlMode::Position, -6200);
+	}
+	if(POV == 90){
+		E.ElevatorMaster->Set(ControlMode::Position, -11450);
+		E.ElbowController->Set(ControlMode::Position, -3000);
+	}
 
-	SmartDashboard::PutNumber("Teleop Elevator", E.ElevatorMaster->GetSelectedSensorPosition());
-	SmartDashboard::PutNumber("Desired", E.Lock);
+	if(Climb){
+		if(CurrentPos == false){
+			lift->Set(DoubleSolenoid::Value::kForward);
+			CurrentPos = true;
+		}
+		else{
+			lift->Set(DoubleSolenoid::Value::kReverse);
+			CurrentPos = false;
+		}
+	}
 
 }
 
 void Robot::getInput() {
 
 	//Driver
-	input_lt = driver.GetTriggerAxis(GenericHID::JoystickHand::kLeftHand); //Left Trigger
-	input_rt = driver.GetTriggerAxis(GenericHID::JoystickHand::kRightHand); //Right Trigger
+	Input_Lt = driver.GetTriggerAxis(GenericHID::JoystickHand::kLeftHand); //Left Trigger
+	Input_Rt = driver.GetTriggerAxis(GenericHID::JoystickHand::kRightHand); //Right Trigger
 
-	left_x = driver.GetX(GenericHID::JoystickHand::kLeftHand); //Left Joystick: X Axis
+	LeftX = driver.GetX(GenericHID::JoystickHand::kLeftHand); //Left Joystick: X Axis
 
 	leftBumper = driver.GetBumper(GenericHID::JoystickHand::kLeftHand); //Left Bumper
 	rightBumper = driver.GetBumper(GenericHID::JoystickHand::kRightHand); //RIght Bumper
 
-	shiftup = driver.GetAButton(); //A Button
-	shiftdown = driver.GetBButton(); //B Button
+	ShiftUp = driver.GetAButton(); //A Button
+	ShiftDown = driver.GetBButton(); //B Button
 
-	TargetTape = driver.GetXButton(); //X Button
-	TargetBall = driver.GetYButton(); //Y Button
+	AutoAline = driver.GetStartButton(); //Start Button
+
 	NullTarget = driver.GetRawButton(10); //Right Joystick Button
 
 	//Operater
-	elevator_up = operater.GetTriggerAxis(GenericHID::JoystickHand::kRightHand); //Right Trigger
-	elevator_down = operater.GetTriggerAxis(GenericHID::JoystickHand::kLeftHand); //Left Trigger
+	ElevatorUp = operater.GetTriggerAxis(GenericHID::JoystickHand::kRightHand); //Right Trigger
+	ElevatorDown = operater.GetTriggerAxis(GenericHID::JoystickHand::kLeftHand); //Left Trigger
 
-	elbowup = operater.GetXButton(); //X Button
-	elbowdown = operater.GetAButton(); //Y Button
+	ElbowUp = operater.GetXButton(); //X Button
+	ElbowDown = operater.GetAButton(); //Y Button
 	MaxHeight = operater.GetYButton(); //A Button
 	Straight = operater.GetBButton(); //B Button
 
-	release_1 = operater.GetBumper(frc::GenericHID::JoystickHand::kRightHand);
-	release_2 = operater.GetBumper(frc::GenericHID::JoystickHand::kLeftHand);
+	Grab = operater.GetBumper(frc::GenericHID::JoystickHand::kRightHand);
+	Release = operater.GetBumper(frc::GenericHID::JoystickHand::kLeftHand);
 	ServoController = operater.GetStartButton(); //Start Button
 
-	intake = operater.GetY(frc::GenericHID::JoystickHand::kLeftHand); //Left Joystick: Y Axis
-	Zero = operater.GetRawButton(9); //Left Joystick Button
+	Intake = operater.GetY(frc::GenericHID::JoystickHand::kRightHand); //Right Joystick: Y Axis
+	Zero = operater.GetRawButton(10); //Right Joystick Button
 
-	ClimberWheels = operater.GetY(frc::GenericHID::JoystickHand::kRightHand); //Right Joystick: Y Axis
-	climb = operater.GetRawButton(10); //Right Joystick Button
+	ClimberWheels = operater.GetY(frc::GenericHID::JoystickHand::kLeftHand); //Left Joystick: Y Axis
+	Climb = operater.GetRawButtonReleased(9); //Left Joystick Button
 
 	POV = operater.GetPOV(); //D-Pad
-
-
 }
 
 void Robot::RaiderDrive(double zRotation, double xSpeed){
@@ -209,20 +301,6 @@ void Robot::RaiderDrive(double zRotation, double xSpeed){
 	//Right
 	frontRight.Set(ControlMode::PercentOutput, xSpeed + zRotation);
 	backRight.Set(ControlMode::PercentOutput, xSpeed + zRotation);
-}
-
-void Robot::PIDControl(double Desired, std::string Object, SpeedController &kSpeedController){
-	kError = Desired - kCurrent;
-	kIntegral += kError;
-	kSpeed = kP * kError + kI * kIntegral + kF;
-	if(kSpeed < 0){
-		kSpeed = kSpeed/3;
-	}
-	kSpeedController.Set(kSpeed);
-	SmartDashboard::PutNumber("Current Speed", -(kSpeed + kF));
-	SmartDashboard::PutNumber("Current Error", kError);
-	SmartDashboard::PutNumber("Current Integral", kIntegral);
-	SmartDashboard::PutNumber("Current", kCurrent);
 }
 
 

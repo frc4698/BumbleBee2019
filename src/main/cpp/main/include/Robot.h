@@ -34,9 +34,6 @@ class Robot: public frc::IterativeRobot {
 	VictorSPX frontRight { 8 }; //40amp
 	VictorSPX backRight { 9 }; //40amp
 
-	VictorSPX Climber_Bottom { 6 }; //40amp
-	VictorSPX Climber_Top { 7 }; //40amp
-
 	XboxController driver { 0 };
 	XboxController operater { 1 };
 	Joystick operate{1};
@@ -62,7 +59,6 @@ public:
 	void RaiderDrive(double zRotation, double xSpeed);
 	void LimeLight(char Item);
 	void setLevel(std::string Object,int Level);
-	void PIDControl(double Desired, std::string Object, SpeedController &kSpeedController);
 
 private:
 	//Limelight
@@ -78,66 +74,67 @@ private:
 	DoubleSolenoid *shift;
 	DoubleSolenoid *lift = new DoubleSolenoid(4, 5);
 
-	//Servo
-	Servo *climber = new Servo(2);
-
 	//SmartDashboard
 	Preferences *prefs;
 
-	//Encoders
-	double Circumfrence = 18.9;
-	double GearRatio = 1/1;
-	double loop = 0;
-
 	//Driver Inputs
-	double input_lt, input_rt; //Forward and Backward, Left and Right Trigger
-	double left_x; //Turn, Left Joy: X Axis
-	bool shiftup, shiftdown; //A and B button
+	double Input_Lt, Input_Rt; //Forward and Backward, Left and Right Trigger
+	double LeftX; //Turn, Left Joy: X Axis
+	bool ShiftUp, ShiftDown; //A and B button
 	bool rightBumper, leftBumper; //Left and Right Bumper
 	bool TargetTape, TargetBall; //X and Y
 	bool NullTarget; //Right Joystick Button
 	bool ServoController; //Start Button
-	bool ServoDropped = false;
+	double AutoAline; //Start button
+	
 
 	//Operater Input
-	double elevator_up, elevator_down; //Left and Right Trigger
-	bool climb; //Button 9: Left Joy
-	double intake; //Right Joy Y Axis
-	bool elbowup, elbowdown;//X: Arm Up, Y: Arm Down
-	bool release_1; //Right Bumper
-	bool release_2; //Left Bumper
+	double ElevatorUp, ElevatorDown; //Left and Right Trigger
+	bool Climb; //Button 9: Left Joy
+	double Intake; //Right Joy Y Axis
+	bool ElbowUp, ElbowDown;//X: Arm Up, Y: Arm Down
+	bool Grab; //Right Bumper
+	bool Release; //Left Bumper
 	double POV; //O: Top Level, 90: Middle Level, 180:Bottom
 	bool Zero; //Button 10: Right Joy
 	double ClimberWheels; //Left Joy Y Axis
 	bool Straight; //B Button
 	bool MaxHeight; //A Button
+	bool ClimberMode; //Activated by Start Button
 
 	//Drive Values
-	double drive_multiplier;
-	double turn_multiplier;
-	double speed;
-
-	
+	double DriveMultiplier;
+	double TurnMultiplier;
+	double Speed;
+	double ElevatorSpeed;
+	bool CurrentPos = false;
 
 	//PID
-	double kP;
-	double kI;
-	double kD;
-	double kF;
-	double kError;
-	double kIntegral;
-	double kDerivative;
-	double kCurrent;
-	double kSpeed;
+	double kP; //Drivetrain P value
+	double kI; //Drivetrain I value
+	double kD; //Drivetrain D value
 
-	double ElbowkP;
-	double ElbowkI;
-	double ElbowkD;
+	double ElbowkP; //Elbow P Value
+	double ElbowkI; //Elbow I Value
+	double ElbowkD; //Elbow D Value
 
-	double ElevatorkP;
-	double ElevatorkI;
-	double ElevatorkD;
+	double ElevatorkP; //Elevator P Value
+	double ElevatorkI; //Elevator I Value
+	double ElevatorkD; //Elevator D Value
 
-	double Test;
+	double tError;
+	double tIntegral;
+	double tPrevError;
+	double tPCorrection;
+	double tICorrection;
+	double tDCorrection;
+	double tCorrection;
 
+	double fError;
+	double fIntegral;
+	double fPrevError;
+	double fPCorrection;
+	double fICorrection;
+	double fDCorrection;
+	double fCorrection;
 };
