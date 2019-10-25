@@ -17,12 +17,16 @@ void Robot::RobotInit() {
 	E.ElevatorSlave->Set(ControlMode::Follower, 0);
 	//E.ElbowMotor.SetInverted(true);
 	prefs = Preferences::GetInstance();
-	frc::CameraServer::GetInstance()->StartAutomaticCapture();
+	cs::UsbCamera camera = frc::CameraServer::GetInstance()->StartAutomaticCapture();
+	camera.SetResolution(160, 120);
 	gyro = new AHRS(SPI::Port::kMXP);
 
 	shift = new DoubleSolenoid(6, 7);
 
+	AT.table->PutNumber("pipeline", 0);
+
 }
+
 
 void Robot::DisabledInit() {
 }
@@ -38,6 +42,8 @@ void Robot::DisabledPeriodic() {
 	ElevatorkP = prefs->GetDouble("ElevatorP", 0);
 	ElevatorkI = prefs->GetDouble("ElevatorI", 0);
 	ElevatorkD = prefs->GetDouble("ElevatorD", 0);
+	AT.tP = prefs->GetDouble("tP", 0);
+	AT.kF = prefs->GetDouble("kF", 0);
 
 	SmartDashboard::PutNumber("Drive Multiplier:", DriveMultiplier);
 	SmartDashboard::PutNumber("Turn Multiplier:", TurnMultiplier);
@@ -62,7 +68,7 @@ void Robot::AutonomousInit() {
 	//Elbow PID
 	E.ElbowController->SetSelectedSensorPosition(0, kPIDLoopIdx, 30);
 	E.ElbowController->ConfigSelectedFeedbackSensor(FeedbackDevice::CTRE_MagEncoder_Relative, kPIDLoopIdx, 30);
-	E.ElbowController->SetSensorPhase(true);
+	E.ElbowController->SetSensorPhase(false);
 	E.ElbowController->Config_kD(kPIDLoopIdx, ElbowkD, 30);
 	E.ElbowController->Config_kI(kPIDLoopIdx, ElbowkI, 30);
 	E.ElbowController->Config_kP(kPIDLoopIdx, ElbowkP, 30);
@@ -80,7 +86,6 @@ void Robot::AutonomousInit() {
 	E.ElevatorMaster->ConfigClosedLoopPeakOutput(kPIDLoopIdx, .45, 30);
 
 	//Climber
-	ClimberMode = false;
 	CurrentPos = false;
 
 	E.ElbowController->SetSelectedSensorPosition(0);
@@ -130,6 +135,7 @@ void Robot::TeleopPeriodic() {
 	//Limelight Target Reflective Strips
 	if(AutoAline){
 		table->PutNumber("pipeline", 2);
+		tCorrection = AT.AutoTargetTurn();
 	}
 
 	//Turns off Targeting
@@ -138,7 +144,7 @@ void Robot::TeleopPeriodic() {
 		tCorrection = 0;
 		tIntegral = 0;
 	}
-	
+	/*
 	//PID for Left and Right
 	tError = tx;
 	tPCorrection = tError * kP;
@@ -169,44 +175,22 @@ void Robot::TeleopPeriodic() {
 		fCorrection = 0;
 		fIntegral = 0;
 	}
-	fPrevError = fError;
+	fPrevError = fError;*/
 
 	//Custom Drive Class (Like Arcade Drive)
 	RaiderDrive((-(LeftX * TurnMultiplier) * Speed) + tCorrection, (-Input_Rt + Input_Lt) * DriveMultiplier * Speed);
 
 	//Operator
 
-	//Changes What Triggers do on Operator Controller
-	if(operater.GetStartButtonReleased()){
-		if(ClimberMode == true){
-			ClimberMode = false;
-		}
-		else{
-			ClimberMode = true;
-		}
-	}
-
 	//Elevator
 	ElevatorSpeed = ElevatorUp - ElevatorDown;
-	if(ClimberMode == true){
-		E.Climber(ElevatorUp-ElevatorDown, ClimberWheels);
-	if(Climb){
-		if(CurrentPos == false){
-			lift->Set(DoubleSolenoid::Value::kReverse);
-			CurrentPos = true;
-		}
-		else{
-			lift->Set(DoubleSolenoid::Value::kForward);
-			CurrentPos = false;
-		}
-	}
-	}
-	else{
-		//Move Elevator
-		E.MoveElevator(-ElevatorSpeed);
-		//Intake
-		E.IntakeSpeed(-Intake);
-	}
+
+	E.Climber(0, ClimberPully);
+
+	//Move Elevator
+	E.MoveElevator(-ElevatorSpeed);
+	//Intake
+	E.IntakeSpeed(-Intake);
 
 	//Release Disk
 	if (Release){
@@ -217,15 +201,15 @@ void Robot::TeleopPeriodic() {
 	}
 
 	if (Straight){
-		E.ElbowController->Set(ControlMode::Position, -5000);
+		E.ElbowController->Set(ControlMode::Position, 5000);
 	}
 
 	else if (ElbowUp){
-		E.ElbowController->Set(ControlMode::Position, -3000);
+		E.ElbowController->Set(ControlMode::Position, 3000);
 	}
 
 	else if (ElbowDown){
-		E.ElbowController->Set(ControlMode::Position, -8800);
+		E.ElbowController->Set(ControlMode::Position, 8800);
 	}
 
 	else if(MaxHeight){
@@ -284,11 +268,10 @@ void Robot::getInput() {
 	Release = operater.GetBumper(frc::GenericHID::JoystickHand::kLeftHand);
 	ServoController = operater.GetStartButton(); //Start Button
 
-	Intake = operater.GetY(frc::GenericHID::JoystickHand::kRightHand); //Right Joystick: Y Axis
-	Zero = operater.GetRawButton(10); //Right Joystick Button
+	Intake = operater.GetY(frc::GenericHID::JoystickHand::kLeftHand); //Left Joystick: Y Axis
 
-	ClimberWheels = operater.GetY(frc::GenericHID::JoystickHand::kLeftHand); //Left Joystick: Y Axis
-	Climb = operater.GetRawButtonReleased(9); //Left Joystick Button
+	ClimberPully = operater.GetY(frc::GenericHID::JoystickHand::kRightHand); //Right Joystick: Y Axis
+	Climb = operater.GetRawButtonReleased(10); //Right Joystick Button
 
 	POV = operater.GetPOV(); //D-Pad
 }

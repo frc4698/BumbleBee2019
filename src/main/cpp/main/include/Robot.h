@@ -22,6 +22,7 @@
 #include <networktables/NetworkTableInstance.h>
 #include <frc/Servo.h>
 #include <main/include/Constant.h>
+#include <main/include/AutoTargeting.h>
 
 namespace frc {
 class Preferences;
@@ -45,6 +46,8 @@ class Robot: public frc::IterativeRobot {
 	AHRS *gyro;
 
 	Elevator E;
+
+	AutoTargeting AT;
 
 public:
 
@@ -85,22 +88,20 @@ private:
 	bool TargetTape, TargetBall; //X and Y
 	bool NullTarget; //Right Joystick Button
 	bool ServoController; //Start Button
-	double AutoAline; //Start button
+	bool AutoAline; //Start button
 	
 
 	//Operater Input
 	double ElevatorUp, ElevatorDown; //Left and Right Trigger
-	bool Climb; //Button 9: Left Joy
+	bool Climb; //Button 10: Right Joy
 	double Intake; //Right Joy Y Axis
 	bool ElbowUp, ElbowDown;//X: Arm Up, Y: Arm Down
 	bool Grab; //Right Bumper
 	bool Release; //Left Bumper
 	double POV; //O: Top Level, 90: Middle Level, 180:Bottom
-	bool Zero; //Button 10: Right Joy
-	double ClimberWheels; //Left Joy Y Axis
 	bool Straight; //B Button
 	bool MaxHeight; //A Button
-	bool ClimberMode; //Activated by Start Button
+	double ClimberPully; //Right Joystick Y-Axis
 
 	//Drive Values
 	double DriveMultiplier;
